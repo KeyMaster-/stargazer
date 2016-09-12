@@ -101,10 +101,10 @@ function _update()
   csr.x = mid(0, csr.x, 127)
   csr.y = mid(0, csr.y, 127)
 
-  if(csr.x < 4) then cam.x -= 1 end
-  if(csr.x >= 124) then cam.x += 1 end
-  if(csr.y < 4) then cam.y -= 1 end
-  if(csr.y >= 124) then cam.y += 1 end
+  if(csr.x < 4) then cam.x -= csr_step end
+  if(csr.x >= 124) then cam.x += csr_step end
+  if(csr.y < 4) then cam.y -= csr_step end
+  if(csr.y >= 124) then cam.y += csr_step end
 
   cam.x = mid(cam.x, 0, 128)
   cam.y = mid(cam.y, 0, 128)
