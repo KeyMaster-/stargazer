@@ -3,7 +3,7 @@ version 8
 __lua__
 mindist=18 + rnd(2)
 max_candidates = 10
-sky_size = 512
+sky_size = 256
 
 abc = 'abcdefghijklmnopqrstuvwxyz'
 
@@ -22,8 +22,8 @@ highlighted_star=nil
 csr_gfx = 0
 
 cam={}
-cam.x=sky_size / 2
-cam.y=sky_size / 2
+cam.x=sky_size / 2 - 64
+cam.y=sky_size / 2 - 64
 
 function txt_w(str)
   return #str * 4 - 1 --#str * 3 for letter width, + #str - 1 for spacing
