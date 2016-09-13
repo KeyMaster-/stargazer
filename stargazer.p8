@@ -3,6 +3,9 @@ version 8
 __lua__
 mindist=18 + rnd(2)
 max_candidates = 10
+sky_size = 512
+
+abc = 'abcdefghijklmnopqrstuvwxyz'
 
 pertubation = 13 + rnd(4)
 
@@ -14,12 +17,17 @@ csr={}
 csr.x=64
 csr.y=64
 
+highlighted_star=nil
+
 csr_gfx = 0
 
 cam={}
-cam.x=64
-cam.y=64
+cam.x=sky_size / 2
+cam.y=sky_size / 2
 
+function txt_w(str)
+  return #str * 4 - 1 --#str * 3 for letter width, + #str - 1 for spacing
+end
   --checks if x1,y1 is within dist distance from x2,y2
 function dist_check(x1,y1,x2,y2,dist)
     --if outisde bounding box, not in distance
@@ -28,6 +36,11 @@ function dist_check(x1,y1,x2,y2,dist)
   local ydiff = y2 - y1
   if xdiff * xdiff + ydiff * ydiff < dist * dist then return true end
   return false
+end
+
+function rect_check(x,y,x1,y1,x2,y2)
+  if x<x1 or x > x2 or y < y1 or y > y2 then return false end
+  return true
 end
 
 function set_twinkle(star)
@@ -44,11 +57,20 @@ function make_star(x, y)
   if(star.base_col == 4) star.base_col = 1
   set_twinkle(star)
   star.timer -= flr(rnd(twinkling_base))
+  star.name = ''
+  for i=1,3 do
+    local letter = flr(rnd(26)) + 1
+    star.name = star.name..sub(abc, letter, letter)
+  end
+  star.name = star.name..'-'
+  for i=1,2 do
+    star.name = star.name..flr(rnd(10))
+  end
   return star
 end
 
 function _init() 
-  stars[1] = make_star(128, 128)
+  stars[1] = make_star(sky_size / 2, sky_size / 2)
 
   local active = {}
   add(active, 1)
@@ -64,7 +86,7 @@ function _init()
       local new_x = flr(cos(angle) * r) + active_star.x
       local new_y = flr(sin(angle) * r) + active_star.y
 
-      if new_x > 0 and new_x < 256 and new_y > 0 and new_y < 256 then
+      if rect_check(new_x, new_y, 0, 0, sky_size-1, sky_size-1) then
         local valid = true
         for j=1,#stars do
           local other_star = stars[j]
@@ -77,10 +99,12 @@ function _init()
         if valid then
           new_x += flr(rnd(2*pertubation) - pertubation)
           new_y += flr(rnd(2*pertubation) - pertubation)
-          local new_star = make_star(new_x, new_y)
-          add(stars, new_star)
-          add(active, #stars)
-          break
+          if rect_check(new_x, new_y, 0, 0, sky_size-1, sky_size-1) then --pertubation might move the star off-world
+            local new_star = make_star(new_x, new_y)
+            add(stars, new_star)
+            add(active, #stars)
+            break
+          end
         end
       end
       i += 1
@@ -106,14 +130,16 @@ function _update()
   if(csr.y < 4) then cam.y -= csr_step end
   if(csr.y >= 124) then cam.y += csr_step end
 
-  cam.x = mid(cam.x, 0, 128)
-  cam.y = mid(cam.y, 0, 128)
+  cam.x = mid(cam.x, 0, sky_size - 128)
+  cam.y = mid(cam.y, 0, sky_size - 128)
 
   csr_gfx = 0
+  highlighted_star = nil
   for star in all(stars) do
     star.timer -= 1
     if dist_check(csr.x + cam.x, csr.y + cam.y, star.x, star.y, 3) then
       csr_gfx = 1
+      highlighted_star = star
     end
   end
 end
@@ -121,16 +147,26 @@ end
 function _draw()
   camera()
   rectfill(0, 0, 127, 127, 0)
-  spr(csr_gfx, csr.x-3, csr.y-3)
 
   camera(cam.x, cam.y)
 
-  for i=1,#stars do
-    local star=stars[i]
+  for star in all(stars) do
     if star.timer == 0 then
       set_twinkle(star)
     end
     pset(star.x, star.y, star.col)
+  end
+
+  camera()
+  spr(csr_gfx, csr.x-3, csr.y-3)
+
+  camera(cam.x, cam.y)
+
+  if(highlighted_star != nil) then
+    local print_x = highlighted_star.x + 1
+    if(print_x + txt_w(highlighted_star.name) > sky_size) then print_x = sky_size - txt_w(highlighted_star.name) end
+
+    print(highlighted_star.name, print_x, highlighted_star.y - 6, 12)
   end
 end
 __gfx__
