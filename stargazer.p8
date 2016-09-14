@@ -1,29 +1,20 @@
 pico-8 cartridge // http://www.pico-8.com
 version 8
 __lua__
-mindist=18 + rnd(2)
-max_candidates = 10
-sky_size = 256
+--todo: load seed from savefile if there is one saved
+-- srand(512)
 
-pertubation = 13 + rnd(4)
+sky_size = 256
 
 twinkling_base = 150
 twinkling_rnd = 120
 
-stars={}
-csr={}
-csr.x=64
-csr.y=64
-
-csr_gfx = 0
-
-cam={}
-cam.x=sky_size / 2 - 64
-cam.y=sky_size / 2 - 64
-
-function txt_w(str)
-  return #str * 4 - 1 --#str * 3 for letter width, + #str - 1 for spacing
+function set_twinkle(star)
+  star.timer = twinkling_base + flr(rnd(twinkling_rnd))
+  star.col = star.base_col + flr(rnd(2))
+  if(star.col == 2) star.col = 5
 end
+
   --checks if x1,y1 is within dist distance from x2,y2
 function dist_check(x1,y1,x2,y2,dist)
     --if outisde bounding box, not in distance
@@ -34,75 +25,106 @@ function dist_check(x1,y1,x2,y2,dist)
   return false
 end
 
-function rect_check(x,y,x1,y1,x2,y2)
-  if x<x1 or x > x2 or y < y1 or y > y2 then return false end
-  return true
+stars={}
+
+star_gen = {
+  mindist = 18 + rnd(2),
+  max_candidates = 10,
+  pertubation = 13 + rnd(4),
+  done = false,
+  active = {},
+
+  rect_check = function(x,y,x1,y1,x2,y2)
+    if x<x1 or x > x2 or y < y1 or y > y2 then return false end
+    return true
+  end,
+  make_star = function(x,y)
+    local star = {}
+    star.x = x
+    star.y = y
+    star.base_col = 4 + flr(rnd(3))
+    if(star.base_col == 4) star.base_col = 1
+    set_twinkle(star)
+    star.timer -= flr(rnd(twinkling_base))
+    return star
+  end
+}
+
+function star_gen:init() 
+  stars[1] = self.make_star(sky_size / 2, sky_size / 2)
+  
+  add(self.active, 1)
 end
 
-function set_twinkle(star)
-  star.timer = twinkling_base + flr(rnd(twinkling_rnd))
-  star.col = star.base_col + flr(rnd(2))
-  if(star.col == 2) star.col = 5
-end
+function star_gen:update()
 
-function make_star(x, y)
-  local star = {}
-  star.x = x
-  star.y = y
-  star.base_col = 4 + flr(rnd(3))
-  if(star.base_col == 4) star.base_col = 1
-  set_twinkle(star)
-  star.timer -= flr(rnd(twinkling_base))
-  return star
-end
+  local active_idx = self.active[flr(rnd(#self.active))+1]
+  local active_star = stars[active_idx]
+  local i=1
+  while i<=self.max_candidates do
+    local r = rnd(2*self.mindist) + self.mindist
+    local angle = rnd(1)
 
-function _init() 
-  stars[1] = make_star(sky_size / 2, sky_size / 2)
+    local new_x = flr(cos(angle) * r) + active_star.x
+    local new_y = flr(sin(angle) * r) + active_star.y
 
-  local active = {}
-  add(active, 1)
+    if self.rect_check(new_x, new_y, 0, 0, sky_size-1, sky_size-1) then
+      local valid = true
+      for j=1,#stars do
+        local other_star = stars[j]
 
-  while #active != 0 do
-    local active_idx = active[flr(rnd(#active))+1]
-    local active_star = stars[active_idx]
-    local i=1
-    while i<=max_candidates do
-      local r = rnd(2*mindist) + mindist
-      local angle = rnd(1)
-
-      local new_x = flr(cos(angle) * r) + active_star.x
-      local new_y = flr(sin(angle) * r) + active_star.y
-
-      if rect_check(new_x, new_y, 0, 0, sky_size-1, sky_size-1) then
-        local valid = true
-        for j=1,#stars do
-          local other_star = stars[j]
-
-          if dist_check(new_x, new_y, other_star.x, other_star.y, mindist) then 
-            valid = false
-            break
-          end
-        end
-        if valid then
-          new_x += flr(rnd(2*pertubation) - pertubation)
-          new_y += flr(rnd(2*pertubation) - pertubation)
-          if rect_check(new_x, new_y, 0, 0, sky_size-1, sky_size-1) then --pertubation might move the star off-world
-            local new_star = make_star(new_x, new_y)
-            add(stars, new_star)
-            add(active, #stars)
-            break
-          end
+        if dist_check(new_x, new_y, other_star.x, other_star.y, self.mindist) then 
+          valid = false
+          break
         end
       end
-      i += 1
+      if valid then
+        new_x += flr(rnd(2*self.pertubation) - self.pertubation)
+        new_y += flr(rnd(2*self.pertubation) - self.pertubation)
+        if self.rect_check(new_x, new_y, 0, 0, sky_size-1, sky_size-1) then --pertubation might move the star off-world
+          local new_star = self.make_star(new_x, new_y)
+          add(stars, new_star)
+          add(self.active, #stars)
+          break
+        end
+      end
     end
-    if i == max_candidates + 1 then --all candidates failed, remove this point form the active list
-      del(active, active_idx)
-    end
+    i += 1
   end
+  if i == self.max_candidates + 1 then --all candidates failed, remove this point form the active list
+    del(self.active, active_idx)
+  end
+
+  self.done = #self.active == 0
+end
+
+csr={
+  x=64,
+  y=64
+}
+
+csr_gfx = 0
+
+cam={
+  x=sky_size / 2 - 64,
+  y=sky_size / 2 - 64
+}
+
+function txt_w(str)
+  return #str * 4 - 1 --#str * 3 for letter width, + #str - 1 for spacing
+end
+
+function _init()
+  star_gen:init()
+
+  update_gen = true
 end
 
 function _update()
+  if not star_gen.done then
+    star_gen:update()
+  end
+
   local csr_step = 1
   if(btn(4)) then csr_step = 4 end
   if(btn(0)) then csr.x -= csr_step end
@@ -120,11 +142,13 @@ function _update()
   cam.x = mid(cam.x, 0, sky_size - 128)
   cam.y = mid(cam.y, 0, sky_size - 128)
 
-  csr_gfx = 0
-  for star in all(stars) do
-    star.timer -= 1
-    if dist_check(csr.x + cam.x, csr.y + cam.y, star.x, star.y, 3) then
-      csr_gfx = 1
+  if star_gen.done then
+    csr_gfx = 0
+    for star in all(stars) do
+      star.timer -= 1
+      if dist_check(csr.x + cam.x, csr.y + cam.y, star.x, star.y, 3) then
+        csr_gfx = 1
+      end
     end
   end
 end
@@ -145,7 +169,7 @@ function _draw()
   camera()
   spr(csr_gfx, csr.x-3, csr.y-3)
 
-  camera(cam.x, cam.y)
+  if not star_gen.done then print('filling the sky...', 29, 10, 7) end
 end
 __gfx__
 00000000007007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
