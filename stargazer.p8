@@ -5,8 +5,6 @@ mindist=18 + rnd(2)
 max_candidates = 10
 sky_size = 256
 
-abc = 'abcdefghijklmnopqrstuvwxyz'
-
 pertubation = 13 + rnd(4)
 
 twinkling_base = 150
@@ -16,8 +14,6 @@ stars={}
 csr={}
 csr.x=64
 csr.y=64
-
-highlighted_star=nil
 
 csr_gfx = 0
 
@@ -57,15 +53,6 @@ function make_star(x, y)
   if(star.base_col == 4) star.base_col = 1
   set_twinkle(star)
   star.timer -= flr(rnd(twinkling_base))
-  star.name = ''
-  for i=1,3 do
-    local letter = flr(rnd(26)) + 1
-    star.name = star.name..sub(abc, letter, letter)
-  end
-  star.name = star.name..'-'
-  for i=1,2 do
-    star.name = star.name..flr(rnd(10))
-  end
   return star
 end
 
@@ -134,12 +121,10 @@ function _update()
   cam.y = mid(cam.y, 0, sky_size - 128)
 
   csr_gfx = 0
-  highlighted_star = nil
   for star in all(stars) do
     star.timer -= 1
     if dist_check(csr.x + cam.x, csr.y + cam.y, star.x, star.y, 3) then
       csr_gfx = 1
-      highlighted_star = star
     end
   end
 end
@@ -161,13 +146,6 @@ function _draw()
   spr(csr_gfx, csr.x-3, csr.y-3)
 
   camera(cam.x, cam.y)
-
-  if(highlighted_star != nil) then
-    local print_x = highlighted_star.x + 1
-    if(print_x + txt_w(highlighted_star.name) > sky_size) then print_x = sky_size - txt_w(highlighted_star.name) end
-
-    print(highlighted_star.name, print_x, highlighted_star.y - 6, 12)
-  end
 end
 __gfx__
 00000000007007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
