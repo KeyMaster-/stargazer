@@ -27,18 +27,19 @@ end
 
 stars={}
 
-star_gen = {
-  mindist = 18 + rnd(2),
-  max_candidates = 10,
-  pertubation = 13 + rnd(4),
-  done = false,
-  active = {},
+----- stargen definition -----
+do
+  local mindist = 18 + rnd(2)
+  local max_candidates = 10
+  local pertubation = 13 + rnd(4)
+  local active = {}
 
-  rect_check = function(x,y,x1,y1,x2,y2)
+  local function rect_check(x,y,x1,y1,x2,y2)
     if x<x1 or x > x2 or y < y1 or y > y2 then return false end
     return true
-  end,
-  make_star = function(x,y)
+  end
+
+  local function make_star(x,y)
     local star = {}
     star.x = x
     star.y = y
@@ -48,55 +49,81 @@ star_gen = {
     star.timer -= flr(rnd(twinkling_base))
     return star
   end
-}
 
-function star_gen:init() 
-  stars[1] = self.make_star(sky_size / 2, sky_size / 2)
-  
-  add(self.active, 1)
-end
+  function star_gen_init()
+    stars[1] = make_star(sky_size/2, sky_size/2)
 
-function star_gen:update()
+    add(active, 1)
+  end
 
-  local active_idx = self.active[flr(rnd(#self.active))+1]
-  local active_star = stars[active_idx]
-  local i=1
-  while i<=self.max_candidates do
-    local r = rnd(2*self.mindist) + self.mindist
-    local angle = rnd(1)
+  function star_gen_update()
+    local active_idx = active[flr(rnd(#active))+1]
+    local active_star = stars[active_idx]
+    local i=1
+    while i<=max_candidates do
+      local r = rnd(2*mindist) + mindist
+      local angle = rnd(1)
 
-    local new_x = flr(cos(angle) * r) + active_star.x
-    local new_y = flr(sin(angle) * r) + active_star.y
+      local new_x = flr(cos(angle) * r) + active_star.x
+      local new_y = flr(sin(angle) * r) + active_star.y
 
-    if self.rect_check(new_x, new_y, 0, 0, sky_size-1, sky_size-1) then
-      local valid = true
-      for j=1,#stars do
-        local other_star = stars[j]
+      if rect_check(new_x, new_y, 0, 0, sky_size-1, sky_size-1) then
+        local valid = true
+        for j=1,#stars do
+          local other_star = stars[j]
 
-        if dist_check(new_x, new_y, other_star.x, other_star.y, self.mindist) then 
-          valid = false
-          break
+          if dist_check(new_x, new_y, other_star.x, other_star.y, mindist) then 
+            valid = false
+            break
+          end
+        end
+        if valid then
+          new_x += flr(rnd(2*pertubation) - pertubation)
+          new_y += flr(rnd(2*pertubation) - pertubation)
+          if rect_check(new_x, new_y, 0, 0, sky_size-1, sky_size-1) then --pertubation might move the star off-world
+            local new_star = make_star(new_x, new_y)
+            add(stars, new_star)
+            add(active, #stars)
+            break
+          end
         end
       end
-      if valid then
-        new_x += flr(rnd(2*self.pertubation) - self.pertubation)
-        new_y += flr(rnd(2*self.pertubation) - self.pertubation)
-        if self.rect_check(new_x, new_y, 0, 0, sky_size-1, sky_size-1) then --pertubation might move the star off-world
-          local new_star = self.make_star(new_x, new_y)
-          add(stars, new_star)
-          add(self.active, #stars)
-          break
+      i += 1
+    end
+    if i == max_candidates + 1 then --all candidates failed, remove this point form the active list
+      del(active, active_idx)
+    end
+
+    if #active == 0 then
+      cur_state = star_select_update
+    end
+  end
+end
+---- star_gen end -----
+
+---- star select start -----
+do
+  function star_select_update()
+    csr_gfx = 0
+    for star in all(stars) do
+      star.timer -= 1
+      if dist_check(csr.x + cam.x, csr.y + cam.y, star.x, star.y, 3) then
+        csr_gfx = 1
+        if btnp(5) then
+          last_star = star
         end
       end
     end
-    i += 1
-  end
-  if i == self.max_candidates + 1 then --all candidates failed, remove this point form the active list
-    del(self.active, active_idx)
   end
 
-  self.done = #self.active == 0
+  function star_select_draw_constellation()
+    if last_star != nil then line(last_star.x, last_star.y, csr.x + cam.x, csr.y + cam.y, 6) end
+  end
 end
+
+----- star select end -----
+
+cur_state = star_gen_update
 
 csr={
   x=64,
@@ -115,15 +142,10 @@ function txt_w(str)
 end
 
 function _init()
-  star_gen:init()
-
-  update_gen = true
+  star_gen_init()
 end
 
 function _update()
-  if not star_gen.done then
-    star_gen:update()
-  end
 
   local csr_step = 1
   if(btn(4)) then csr_step = 4 end
@@ -142,15 +164,7 @@ function _update()
   cam.x = mid(cam.x, 0, sky_size - 128)
   cam.y = mid(cam.y, 0, sky_size - 128)
 
-  if star_gen.done then
-    csr_gfx = 0
-    for star in all(stars) do
-      star.timer -= 1
-      if dist_check(csr.x + cam.x, csr.y + cam.y, star.x, star.y, 3) then
-        csr_gfx = 1
-      end
-    end
-  end
+  cur_state()
 end
 
 function _draw()
@@ -158,6 +172,8 @@ function _draw()
   rectfill(0, 0, 127, 127, 0)
 
   camera(cam.x, cam.y)
+
+  if cur_state == star_select_update then star_select_draw_constellation() end
 
   for star in all(stars) do
     if star.timer == 0 then
@@ -169,17 +185,17 @@ function _draw()
   camera()
   spr(csr_gfx, csr.x-3, csr.y-3)
 
-  if not star_gen.done then print('filling the sky...', 29, 10, 7) end
+  if cur_state == star_gen_update then print('filling the sky...', 29, 10, 7) end
 end
 __gfx__
-00000000007007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00700700070000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-07600670700000070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000007070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00707000070007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+07000700700000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+07000700700000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00707000070007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000007070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-07600670700000070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00700700070000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000007007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
