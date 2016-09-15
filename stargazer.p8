@@ -29,7 +29,7 @@ stars={}
 
 ----- stargen definition -----
 do
-  local mindist = 18 + rnd(2)
+  local mindist = 19 + rnd(2)
   local max_candidates = 10
   local pertubation = 13 + rnd(4)
   local active = {}
@@ -61,7 +61,7 @@ do
     local active_star = stars[active_idx]
     local i=1
     while i<=max_candidates do
-      local r = rnd(2*mindist) + mindist
+      local r = rnd(mindist) + mindist
       local angle = rnd(1)
 
       local new_x = flr(cos(angle) * r) + active_star.x
@@ -104,45 +104,59 @@ end
 ---- star select start -----
 do
   local cur_constellation = {}
+  local hovered_star = nil
   local constellations = {}
   function star_select_update()
     csr_gfx = 0
+    
+    hovered_star = nil
+
     for star in all(stars) do
       star.timer -= 1
       if dist_check(csr.x + cam.x, csr.y + cam.y, star.x, star.y, 3) then
+        hovered_star = star
         csr_gfx = 1
         if btnp(5) then
-          if last_star == star and #cur_constellation >= 2 then
-            add(constellations, cur_constellation)
-            cur_constellation = {}
-            last_star = nil
-          else
+          if star ~= last_star then
+            if last_star ~= nil then add(cur_constellation, star) end --Complete the last to our previous last star if we aren't starting a new sequence
+            add(cur_constellation, star) --Start the next line segment
             last_star = star
-            add(cur_constellation, star)
           end
         end
       end
     end
+
+    if btnp(5) and hovered_star == nil then
+      if last_star == nil then
+        add(constellations, cur_constellation)
+        cur_constellation = {}
+      else
+        last_star = nil
+        cur_constellation[#cur_constellation] = nil --Delete the last star since it's the start of our line segment we won't complete
+      end
+    end
   end
 
-  local function draw_constellation(const)
-    local star_count = #const - 1
-    for i=1,star_count do
-      local from = const[i]
-      local to = const[i+1]
-      line(from.x, from.y, to.x, to.y, 6)
+  local function draw_constellation(const, col)
+    for i=1,#const/2 do --#const/2 since we record to/from star pairs
+      local from = const[i*2 - 1]
+      local to = const[i*2]
+      line(from.x, from.y, to.x, to.y, col)
     end
   end
 
   function star_select_draw_constellations()
 
     for const in all(constellations) do
-      draw_constellation(const)
+      draw_constellation(const, 5)
     end
 
-    draw_constellation(cur_constellation)
+    draw_constellation(cur_constellation, 6)
 
-    if last_star != nil then line(last_star.x, last_star.y, csr.x + cam.x, csr.y + cam.y, 6) end
+    if last_star != nil then 
+      if hovered_star ~= nil then line(last_star.x, last_star.y, hovered_star.x, hovered_star.y, 6)
+      else line(last_star.x, last_star.y, csr.x + cam.x, csr.y + cam.y, 6) end
+    end
   end
 end
 ----- star select end -----
