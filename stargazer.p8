@@ -106,6 +106,7 @@ do
   local cur_constellation = {}
   local hovered_star = nil
   local constellations = {}
+  local commit_count = -1
   function star_select_update()
     csr_gfx = 0
     
@@ -126,13 +127,25 @@ do
       end
     end
 
-    if btnp(5) and hovered_star == nil then
-      if last_star == nil then
-        add(constellations, cur_constellation)
-        cur_constellation = {}
+    if hovered_star == nil then
+      if last_star == nil and #cur_constellation ~= 0 then
+        if btn(5) then
+          if commit_count ~= -1 then commit_count += 1 end
+        else
+          commit_count = 0
+        end
+
+        if commit_count == 20 then
+          add(constellations, cur_constellation)
+          cur_constellation = {}
+          commit_count = 0
+        end
       else
-        last_star = nil
-        cur_constellation[#cur_constellation] = nil --Delete the last star since it's the start of our line segment we won't complete
+        if btnp(5) then
+          last_star = nil
+          cur_constellation[#cur_constellation] = nil --Delete the last star since it's the start of our line segment we won't complete
+          commit_count = -1
+        end
       end
     end
   end
@@ -156,6 +169,13 @@ do
     if last_star != nil then 
       if hovered_star ~= nil then line(last_star.x, last_star.y, hovered_star.x, hovered_star.y, 6)
       else line(last_star.x, last_star.y, csr.x + cam.x, csr.y + cam.y, 6) end
+    end
+  end
+
+  function star_select_draw_commit()
+    if commit_count > 0 then
+      pset(csr.x + 5, csr.y - 20, 9)
+      line(csr.x + 5, csr.y, csr.x + 5, csr.y - commit_count, 7)
     end
   end
 end
@@ -223,6 +243,8 @@ function _draw()
   end
 
   spr(csr_gfx, csr.x-3, csr.y-3)
+
+  if cur_state == star_select_update then star_select_draw_commit() end
 
   if cur_state == star_gen_update then print('filling the sky...', 29, 10, 7) end
 end
