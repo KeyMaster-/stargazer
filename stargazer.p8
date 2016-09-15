@@ -103,6 +103,8 @@ end
 
 ---- star select start -----
 do
+  local cur_constellation = {}
+  local constellations = {}
   function star_select_update()
     csr_gfx = 0
     for star in all(stars) do
@@ -110,17 +112,39 @@ do
       if dist_check(csr.x + cam.x, csr.y + cam.y, star.x, star.y, 3) then
         csr_gfx = 1
         if btnp(5) then
-          last_star = star
+          if last_star == star and #cur_constellation >= 2 then
+            add(constellations, cur_constellation)
+            cur_constellation = {}
+            last_star = nil
+          else
+            last_star = star
+            add(cur_constellation, star)
+          end
         end
       end
     end
   end
 
-  function star_select_draw_constellation()
+  local function draw_constellation(const)
+    local star_count = #const - 1
+    for i=1,star_count do
+      local from = const[i]
+      local to = const[i+1]
+      line(from.x, from.y, to.x, to.y, 6)
+    end
+  end
+
+  function star_select_draw_constellations()
+
+    for const in all(constellations) do
+      draw_constellation(const)
+    end
+
+    draw_constellation(cur_constellation)
+
     if last_star != nil then line(last_star.x, last_star.y, csr.x + cam.x, csr.y + cam.y, 6) end
   end
 end
-
 ----- star select end -----
 
 cur_state = star_gen_update
@@ -146,7 +170,6 @@ function _init()
 end
 
 function _update()
-
   local csr_step = 1
   if(btn(4)) then csr_step = 4 end
   if(btn(0)) then csr.x -= csr_step end
@@ -173,7 +196,7 @@ function _draw()
 
   camera(cam.x, cam.y)
 
-  if cur_state == star_select_update then star_select_draw_constellation() end
+  if cur_state == star_select_update then star_select_draw_constellations() end
 
   for star in all(stars) do
     if star.timer == 0 then
