@@ -212,14 +212,16 @@ function _draw()
 
   if cur_state == star_select_update then star_select_draw_constellations() end
 
+  camera()
+
   for star in all(stars) do
     if star.timer == 0 then
       set_twinkle(star)
     end
-    pset(star.x, star.y, star.col)
+    if cur_state == star_gen_update then pset(star.x * 128/sky_size, star.y * 128/sky_size, star.col)
+    else pset(star.x - cam.x, star.y - cam.y, star.col) end
   end
 
-  camera()
   spr(csr_gfx, csr.x-3, csr.y-3)
 
   if cur_state == star_gen_update then print('filling the sky...', 29, 10, 7) end
