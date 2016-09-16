@@ -9,6 +9,8 @@ sky_size = 256
 twinkling_base = 150
 twinkling_rnd = 120
 
+state = 0 -- 0: stargen, 1: star select, 2: star name
+
 function set_twinkle(star)
   star.timer = twinkling_base + flr(rnd(twinkling_rnd))
   star.col = star.base_col + flr(rnd(2))
@@ -95,7 +97,7 @@ do
     end
 
     if #active == 0 then
-      cur_state = star_select_update
+      state = 1
     end
   end
 end
@@ -136,9 +138,8 @@ do
         end
 
         if commit_count == 20 then
-          add(constellations, cur_constellation)
-          cur_constellation = {}
           commit_count = 0
+          state = 2
         end
       else
         if btnp(5) then
@@ -178,10 +179,51 @@ do
       line(csr.x + 5, csr.y, csr.x + 5, csr.y - commit_count, 7)
     end
   end
+
+  local letters = {1,1,1}
+  local highlighted = 1
+  local abc = 'abcdefghijklmnopqrstuvwxyz'
+
+  function star_select_update_naming()
+    if btnp(4) then --todo using btn 4 isn't what I want, gotta change it
+      --todo: make the constellation name string and save it, render it in draw_constellation
+      add(constellations, cur_constellation)
+      cur_constellation = {}
+      state = 1
+      return
+    end
+
+    if btnp(0) then highlighted -= 1 end
+    if btnp(1) then highlighted += 1 end
+
+    highlighted = ((highlighted - 1) % #letters) + 1
+
+    if btnp(2) then letters[highlighted] += 1 end
+    if btnp(3) then letters[highlighted] -= 1 end
+    letters[highlighted] = ((letters[highlighted] - 1) % 26) + 1
+  end
+
+  function star_select_draw_naming()
+    local name_x = 64 - (#letters*4 - 1) / 2
+    
+    for i=1,#letters do
+      local letter_y = 10
+      if i == highlighted then
+        pal(7, 11)
+        letter_y -= 1
+      else pal() end
+
+      local letter_x = name_x + (i-1)*4
+      
+      spr(2, letter_x, letter_y - 3)
+      spr(2, letter_x, letter_y, 1, 1, false, true)
+
+      print(sub(abc, letters[i], letters[i]), letter_x, letter_y, 7)
+    end
+    pal()
+  end
 end
 ----- star select end -----
-
-cur_state = star_gen_update
 
 csr={
   x=64,
@@ -204,24 +246,29 @@ function _init()
 end
 
 function _update()
-  local csr_step = 1
-  if(btn(4)) then csr_step = 4 end
-  if(btn(0)) then csr.x -= csr_step end
-  if(btn(1)) then csr.x += csr_step end
-  if(btn(2)) then csr.y -= csr_step end
-  if(btn(3)) then csr.y += csr_step end
-  csr.x = mid(0, csr.x, 127)
-  csr.y = mid(0, csr.y, 127)
+  if state == 0 then star_gen_update()
+  elseif state == 1 then
+    local csr_step = 1
+    if(btn(4)) then csr_step = 4 end
+    if(btn(0)) then csr.x -= csr_step end
+    if(btn(1)) then csr.x += csr_step end
+    if(btn(2)) then csr.y -= csr_step end
+    if(btn(3)) then csr.y += csr_step end
+    csr.x = mid(0, csr.x, 127)
+    csr.y = mid(0, csr.y, 127)
 
-  if(csr.x < 4) then cam.x -= csr_step end
-  if(csr.x >= 124) then cam.x += csr_step end
-  if(csr.y < 4) then cam.y -= csr_step end
-  if(csr.y >= 124) then cam.y += csr_step end
+    if(csr.x < 4) then cam.x -= csr_step end
+    if(csr.x >= 124) then cam.x += csr_step end
+    if(csr.y < 4) then cam.y -= csr_step end
+    if(csr.y >= 124) then cam.y += csr_step end
 
-  cam.x = mid(cam.x, 0, sky_size - 128)
-  cam.y = mid(cam.y, 0, sky_size - 128)
+    cam.x = mid(cam.x, 0, sky_size - 128)
+    cam.y = mid(cam.y, 0, sky_size - 128)
 
-  cur_state()
+    star_select_update()
+  elseif state == 2 then
+    star_select_update_naming()
+  end
 end
 
 function _draw()
@@ -230,7 +277,7 @@ function _draw()
 
   camera(cam.x, cam.y)
 
-  if cur_state == star_select_update then star_select_draw_constellations() end
+  if state == 1 or state == 2 then star_select_draw_constellations() end
 
   camera()
 
@@ -238,19 +285,20 @@ function _draw()
     if star.timer == 0 then
       set_twinkle(star)
     end
-    if cur_state == star_gen_update then pset(star.x * 128/sky_size, star.y * 128/sky_size, star.col)
+    if state == 0 then pset(star.x * 128/sky_size, star.y * 128/sky_size, star.col)
     else pset(star.x - cam.x, star.y - cam.y, star.col) end
   end
 
   spr(csr_gfx, csr.x-3, csr.y-3)
 
-  if cur_state == star_select_update then star_select_draw_commit() end
+  if state == 0 then print('filling the sky...', 29, 10, 7)
+  elseif state == 1 then star_select_draw_commit() end
 
-  if cur_state == star_gen_update then print('filling the sky...', 29, 10, 7) end
+  if state == 2 then star_select_draw_naming() end
 end
 __gfx__
-00000000007070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00707000070007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000007070000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00707000070007007770000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 07000700700000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 07000700700000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
