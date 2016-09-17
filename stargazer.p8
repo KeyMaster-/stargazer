@@ -14,7 +14,7 @@ state = 0 -- 0: stargen, 1: star select, 2: star name
 function set_twinkle(star)
   star.timer = twinkling_base + flr(rnd(twinkling_rnd))
   star.col = star.base_col + flr(rnd(2))
-  if(star.col == 2) star.col = 5
+  if(star.col == 2) star.col = 13
 end
 
   --checks if x1,y1 is within dist distance from x2,y2
