@@ -109,6 +109,21 @@ do
   local hovered_star = nil
   local constellations = {}
   local commit_count = -1
+
+  local function set_mid_point(const)
+    local mid_point = {x=0, y=0}
+
+    for star in all(const) do
+      mid_point.x += star.x
+      mid_point.y += star.y
+    end
+
+    mid_point.x /= #const
+    mid_point.y /= #const
+
+    const.mid_point = mid_point
+  end
+
   function star_select_update()
     csr_gfx = 0
     
@@ -133,12 +148,13 @@ do
       if last_star == nil and #cur_constellation ~= 0 then
         if btn(5) then
           if commit_count ~= -1 then commit_count += 1 end
-        else
+        else 
           commit_count = 0
         end
 
         if commit_count == 20 then
           commit_count = 0
+          set_mid_point(cur_constellation)
           state = 2
         end
       else
@@ -173,6 +189,12 @@ do
     end
   end
 
+  function star_select_draw_names()
+    for const in all(constellations) do
+      print(const.name, const.mid_point.x - (3*4 - 1) / 2, const.mid_point.y - 2.5, 12)
+    end
+  end
+
   function star_select_draw_commit()
     if commit_count > 0 then
       pset(csr.x + 5, csr.y - 20, 9)
@@ -187,6 +209,11 @@ do
   function star_select_update_naming()
     if btnp(4) then --todo using btn 4 isn't what I want, gotta change it
       --todo: make the constellation name string and save it, render it in draw_constellation
+      cur_constellation.name = ''
+      for i=1,#letters do
+        cur_constellation.name = cur_constellation.name .. sub(abc, letters[i], letters[i])
+        letters[i] = 1
+      end
       add(constellations, cur_constellation)
       cur_constellation = {}
       state = 1
@@ -203,7 +230,7 @@ do
     letters[highlighted] = ((letters[highlighted] - 1) % 26) + 1
   end
 
-  function star_select_draw_naming()
+  function star_select_draw_name_select()
     local name_x = 64 - (#letters*4 - 1) / 2
     
     for i=1,#letters do
@@ -291,10 +318,14 @@ function _draw()
 
   spr(csr_gfx, csr.x-3, csr.y-3)
 
+  camera(cam.x, cam.y)
+  if state == 1 or state == 2 then star_select_draw_names() end
+
+  camera()
   if state == 0 then print('filling the sky...', 29, 10, 7)
   elseif state == 1 then star_select_draw_commit() end
 
-  if state == 2 then star_select_draw_naming() end
+  if state == 2 then star_select_draw_name_select() end
 end
 __gfx__
 00000000007070000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
