@@ -4,12 +4,104 @@ __lua__
 --todo: load seed from savefile if there is one saved
 -- srand(512)
 
-sky_size = 256
+sky_size = 200
 
 twinkling_base = 150
 twinkling_rnd = 120
 
 state = 0 -- 0: stargen, 1: star select, 2: star name
+
+function line(x1, y1, x2, y2, col, draw_len, gap_len)
+  draw_len = draw_len or 1
+  gap_len = gap_len or 0
+
+  local flipx, flipy = false, false
+  if y2 < y1 then
+    y1,y2 = y2,y1
+    flipy = true
+  end
+
+  if x2 < x1 then 
+    x1,x2 = x2,x1
+    flipx = true
+  end
+
+  local dx = x2 - x1
+  local dy = y2 - y1
+
+  local swap = false
+  if dx < dy then
+    x1,y1 = y1,x1
+    x2,y2 = y2,x2
+    dx,dy = dy,dx
+    flipx,flipy = flipy,flipx --we're swapping the axes on everything, so we should include the flips
+    swap = true
+  end
+
+  local px_count = 0
+
+  local err = 0
+  local deltaerr = dy / dx
+  local y = y1
+  for x=x1,x2 do
+    if px_count < draw_len then
+      local px,py = x,y
+      if (flipx) px = x1 - px + x2
+      if (flipy) py = y1 - py + y2
+      if (swap) px,py = py,px
+      pset(px,py,col)
+    end
+    px_count = (px_count + 1) % (draw_len + gap_len)
+    
+    err += deltaerr
+    if err >= 0.5 then
+      y += 1
+      err -= 1
+    end
+  end
+end
+
+local function angle_in_range(x, l, s)
+  return (flr(x - (l + s)) + 1) <= (x - l)
+end
+
+function circ_custom(x0, y0, r, col, theta, delta) 
+  theta = theta or 0
+  delta  = delta or 1
+  local x = r
+  local y = 0
+  local err = 0
+
+  local function set_px(x, y)
+    if angle_in_range(atan2(x, y), theta, delta) then
+      pset(x0 + x, y0 + y, col)
+      return true
+    else
+      return false
+    end
+  end
+
+  local continue = true
+  while continue and x >= y do
+    continue = false
+
+    continue = set_px(x, y) or continue
+    continue = set_px(y, x) or continue
+    continue = set_px(-y, x) or continue
+    continue = set_px(-x, y) or continue
+    continue = set_px(-x, -y) or continue
+    continue = set_px(-y, -x) or continue
+    continue = set_px(y, -x) or continue
+    continue = set_px(x, -y) or continue
+
+    y += 1
+    err += 1 + 2*y
+    if 2*(err-x) + 1 > 0 then
+      x -= 1
+      err += 1 - 2*x
+    end
+  end
+end
 
 function set_twinkle(star)
   star.timer = twinkling_base + flr(rnd(twinkling_rnd))
@@ -167,18 +259,18 @@ do
     end
   end
 
-  local function draw_constellation(const, col)
+  local function draw_constellation(const, col, draw_len, gap_len)
     for i=1,#const/2 do --#const/2 since we record to/from star pairs
       local from = const[i*2 - 1]
       local to = const[i*2]
-      line(from.x, from.y, to.x, to.y, col)
+      line(from.x, from.y, to.x, to.y, col, draw_len, gap_len)
     end
   end
 
   function star_select_draw_constellations()
 
     for const in all(constellations) do
-      draw_constellation(const, 5)
+      draw_constellation(const, 5, 4, 2)
     end
 
     draw_constellation(cur_constellation, 6)
@@ -197,8 +289,9 @@ do
 
   function star_select_draw_commit()
     if commit_count > 0 then
-      pset(csr.x + 5, csr.y - 20, 9)
-      line(csr.x + 5, csr.y, csr.x + 5, csr.y - commit_count, 7)
+      circ_custom(csr.x, csr.y, 8, 7, 0, commit_count/20)
+      --pset(csr.x + 5, csr.y - 20, 9)
+      --line(csr.x + 5, csr.y, csr.x + 5, csr.y - commit_count, 7)
     end
   end
 
