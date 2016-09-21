@@ -233,10 +233,42 @@ do
             last_star = star
           end
         end
+        break
       end
     end
 
     if hovered_star == nil then
+      if last_star == nil then
+        if btnp(5) then
+          -- check if we should delete a star connection
+          for i=1,#cur_constellation / 2 do
+            local l_start = cur_constellation[i*2-1]
+            local l_end = cur_constellation[i*2]
+            local dir = {x=0,y=0}
+            dir.x = l_end.x - l_start.x
+            dir.y = l_end.y - l_start.y
+
+            local csr_rel = {x=csr.x,y=csr.y}
+            csr_rel.x += cam.x
+            csr_rel.y += cam.y
+
+            csr_rel.x -= l_start.x
+            csr_rel.y -= l_start.y
+
+            local along_line = (csr_rel.x * dir.x + csr_rel.y * dir.y) / (dir.x * dir.x + dir.y * dir.y)
+
+            if along_line >= 0 and along_line <= 1 then
+              local away_sqr = csr_rel.x * csr_rel.x + csr_rel.y * csr_rel.y - along_line^2 * (dir.x * dir.x + dir.y * dir.y)
+              if away_sqr < 3^2 then
+                del(cur_constellation,l_start)
+                del(cur_constellation,l_end)
+                break
+              end
+            end
+          end
+        end
+      end
+
       if last_star == nil and #cur_constellation ~= 0 then
         if btn(5) then
           if commit_count ~= -1 then commit_count += 1 end
