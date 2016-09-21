@@ -281,21 +281,13 @@ do
     end
   end
 
-  function star_select_draw_names()
-    for const in all(constellations) do
-      print(const.name, const.mid_point.x - (3*4 - 1) / 2, const.mid_point.y - 2.5, 12)
-    end
-  end
-
   function star_select_draw_commit()
     if commit_count > 0 then
-      circ_custom(csr.x, csr.y, 8, 7, 0, commit_count/20)
-      --pset(csr.x + 5, csr.y - 20, 9)
-      --line(csr.x + 5, csr.y, csr.x + 5, csr.y - commit_count, 7)
+      circ_custom(csr.x, csr.y, 8, 3, 0, commit_count/20)
     end
   end
 
-  local letters = {1,1,1}
+  local letters = {1,1,1,1}
   local highlighted = 1
   local abc = 'abcdefghijklmnopqrstuvwxyz'
 
@@ -342,6 +334,12 @@ do
     end
     pal()
   end
+
+  function star_select_draw_names()
+    for const in all(constellations) do
+      print(const.name, const.mid_point.x - (#letters*4 - 1) / 2, const.mid_point.y - 2.5, 12)
+    end
+  end
 end
 ----- star select end -----
 
@@ -356,10 +354,6 @@ cam={
   x=sky_size / 2 - 64,
   y=sky_size / 2 - 64
 }
-
-function txt_w(str)
-  return #str * 4 - 1 --#str * 3 for letter width, + #str - 1 for spacing
-end
 
 function _init()
   star_gen_init()
