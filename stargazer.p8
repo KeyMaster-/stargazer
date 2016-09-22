@@ -125,7 +125,7 @@ stars={}
 do
   local mindist = 19 + rnd(2)
   local max_candidates = 10
-  local pertubation = 13 + rnd(4)
+  local pertubation = 8 + rnd(4) --chosen as smallest possible mindist - 1 / sqrt(2), so that no 2 stars can be next to each other even if mindist is minimal, and they get maximum pertubation
   local active = {}
 
   local function rect_check(x,y,x1,y1,x2,y2)
@@ -201,6 +201,7 @@ do
   local hovered_star = nil
   local constellations = {}
   local commit_count = -1
+  local hovered_connection = nil
 
   local function set_mid_point(const)
     local mid_point = {x=0, y=0}
@@ -237,51 +238,55 @@ do
       end
     end
 
-    if hovered_star == nil then
+    hovered_connection = nil
+    if hovered_star == nil and #cur_constellation ~= 0 then
       if last_star == nil then
-        if btnp(5) then
-          -- check if we should delete a star connection
-          for i=1,#cur_constellation / 2 do
-            local l_start = cur_constellation[i*2-1]
-            local l_end = cur_constellation[i*2]
-            local dir = {x=0,y=0}
-            dir.x = l_end.x - l_start.x
-            dir.y = l_end.y - l_start.y
+        -- look for hovered star connection
+        for i=1,#cur_constellation / 2 do
+          local l_start = cur_constellation[i*2-1]
+          local l_end = cur_constellation[i*2]
+          local dir = {x=0,y=0}
+          dir.x = l_end.x - l_start.x
+          dir.y = l_end.y - l_start.y
 
-            local csr_rel = {x=csr.x,y=csr.y}
-            csr_rel.x += cam.x
-            csr_rel.y += cam.y
+          local csr_rel = {x=csr.x,y=csr.y}
+          csr_rel.x += cam.x
+          csr_rel.y += cam.y
 
-            csr_rel.x -= l_start.x
-            csr_rel.y -= l_start.y
+          csr_rel.x -= l_start.x
+          csr_rel.y -= l_start.y
 
-            local along_line = (csr_rel.x * dir.x + csr_rel.y * dir.y) / (dir.x * dir.x + dir.y * dir.y)
+          local along_line = (csr_rel.x * dir.x + csr_rel.y * dir.y) / (dir.x * dir.x + dir.y * dir.y)
 
-            if along_line >= 0 and along_line <= 1 then
-              local away_sqr = csr_rel.x * csr_rel.x + csr_rel.y * csr_rel.y - along_line^2 * (dir.x * dir.x + dir.y * dir.y)
-              if away_sqr < 3^2 then
-                del(cur_constellation,l_start)
-                del(cur_constellation,l_end)
-                break
-              end
+          if along_line >= 0 and along_line <= 1 then
+            local away_sqr = csr_rel.x * csr_rel.x + csr_rel.y * csr_rel.y - along_line^2 * (dir.x * dir.x + dir.y * dir.y)
+            if away_sqr < 3^2 then
+              hovered_connection = {l_start, l_end}
+              break
             end
           end
         end
-      end
 
-      if last_star == nil and #cur_constellation ~= 0 then
-        if btn(5) then
-          if commit_count ~= -1 then commit_count += 1 end
-        else 
-          commit_count = 0
-        end
+        if hovered_connection ~= nil then
+          if btnp(5) then
+            del(cur_constellation, hovered_connection[1])
+            del(cur_constellation, hovered_connection[2])
+            commit_count = -1 --delete should not start commit, button will have to be re-pressed to do so
+          end
+        else
+          if btn(5) then
+            if commit_count ~= -1 then commit_count += 1 end
+          else
+            commit_count = 0
+          end
 
-        if commit_count == 20 then
-          commit_count = 0
-          set_mid_point(cur_constellation)
-          state = 2
+          if commit_count == 20 then
+            commit_count = -1
+            set_mid_point(cur_constellation)
+            state = 2
+          end
         end
-      else
+      else --last_star is nil
         if btnp(5) then
           last_star = nil
           cur_constellation[#cur_constellation] = nil --Delete the last star since it's the start of our line segment we won't complete
@@ -307,6 +312,8 @@ do
 
     draw_constellation(cur_constellation, 6)
 
+    if hovered_connection ~= nil then line(hovered_connection[1].x, hovered_connection[1].y, hovered_connection[2].x, hovered_connection[2].y, 9) end
+
     if last_star != nil then 
       if hovered_star ~= nil then line(last_star.x, last_star.y, hovered_star.x, hovered_star.y, 6)
       else line(last_star.x, last_star.y, csr.x + cam.x, csr.y + cam.y, 6) end
@@ -324,8 +331,14 @@ do
   local abc = 'abcdefghijklmnopqrstuvwxyz'
 
   function star_select_update_naming()
-    if btnp(4) then --todo using btn 4 isn't what I want, gotta change it
-      --todo: make the constellation name string and save it, render it in draw_constellation
+    if btnp(4) then
+      state = 1
+      return
+    end
+    if not btn(5) then
+      commit_count = 0
+    end
+    if btnp(5) and commit_count ~= -1 then
       cur_constellation.name = ''
       for i=1,#letters do
         cur_constellation.name = cur_constellation.name .. sub(abc, letters[i], letters[i])
@@ -333,6 +346,7 @@ do
       end
       add(constellations, cur_constellation)
       cur_constellation = {}
+      highlighted = 1
       state = 1
       return
     end
