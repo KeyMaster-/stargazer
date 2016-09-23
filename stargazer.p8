@@ -4,10 +4,7 @@ __lua__
 --todo: load seed from savefile if there is one saved
 -- srand(512)
 
-sky_size = 200
-
-twinkling_base = 150
-twinkling_rnd = 120
+sky_size = 256
 
 state = 0 -- 0: stargen, 1: star select, 2: star name
 
@@ -103,12 +100,6 @@ function circ_custom(x0, y0, r, col, theta, delta)
   end
 end
 
-function set_twinkle(star)
-  star.timer = twinkling_base + flr(rnd(twinkling_rnd))
-  star.col = star.base_col + flr(rnd(2))
-  if(star.col == 2) star.col = 13
-end
-
   --checks if x1,y1 is within dist distance from x2,y2
 function dist_check(x1,y1,x2,y2,dist)
     --if outisde bounding box, not in distance
@@ -123,15 +114,15 @@ stars={}
 
 ----- stargen definition -----
 do
-  local mindist = 19 + rnd(2)
   local max_candidates = 10
-  local pertubation = 8 + rnd(4) --chosen as smallest possible mindist - 1 / sqrt(2), so that no 2 stars can be next to each other even if mindist is minimal, and they get maximum pertubation
-  local active = {}
+  local stars_limit = 2000 --max number of stars based on sky size, mindist etc, needed since storage can only hold star indices so big
 
-  local function rect_check(x,y,x1,y1,x2,y2)
-    if x<x1 or x > x2 or y < y1 or y > y2 then return false end
-    return true
-  end
+  local twinkling_base = 150
+  local twinkling_rnd = 120
+
+  local pertubation
+  local mindist
+  local active
 
   local function make_star(x,y)
     local star = {}
@@ -145,9 +136,25 @@ do
   end
 
   function star_gen_init()
+      --do rnd things in init so we can call seed before if necessary
+    mindist = 19 + rnd(2)
+    pertubation = 8 + rnd(4) --chosen as smallest possible mindist - 1 / sqrt(2), so that no 2 stars can be next to each other even if mindist is minimal, and they get maximum pertubation
+    active = {}
+
     stars[1] = make_star(sky_size/2, sky_size/2)
 
     add(active, 1)
+  end
+
+  local function rect_check(x,y,x1,y1,x2,y2)
+    if x<x1 or x > x2 or y < y1 or y > y2 then return false end
+    return true
+  end
+
+  function set_twinkle(star)
+    star.timer = twinkling_base + flr(rnd(twinkling_rnd))
+    star.col = star.base_col + flr(rnd(2))
+    if(star.col == 2) star.col = 13
   end
 
   function star_gen_update()
@@ -188,7 +195,7 @@ do
       del(active, active_idx)
     end
 
-    if #active == 0 then
+    if #active == 0 or #stars == stars_limit then
       state = 1
     end
   end
@@ -328,7 +335,7 @@ do
 
   local letters = {1,1,1,1}
   local highlighted = 1
-  local abc = 'abcdefghijklmnopqrstuvwxyz'
+  local abc = 'abcdefghijklmnopqrstuvwxyz123456789 '
 
   function star_select_update_naming()
     if btnp(4) then
@@ -358,7 +365,7 @@ do
 
     if btnp(2) then letters[highlighted] += 1 end
     if btnp(3) then letters[highlighted] -= 1 end
-    letters[highlighted] = ((letters[highlighted] - 1) % 26) + 1
+    letters[highlighted] = ((letters[highlighted] - 1) % #abc) + 1
   end
 
   function star_select_draw_name_select()
@@ -402,6 +409,22 @@ cam={
 }
 
 function _init()
+  cartdata('keymaster_stargazer')
+  local first_byte = dget(0) --on first start this is 0
+  local seed = band(first_byte, 0xffff.0000) --seed is in the first 16 bits (non-fractional bits)
+
+  if seed == 0 then
+    seed = rnd(32767.99)
+    seed = seed * sgn(rnd(1) - 0.5)
+    seed = flr(seed)
+
+    local lower_bits = band(first_byte, 0x0000.ffff)
+    local write_back = bor(seed, lower_bits)
+
+    dset(0, write_back)
+  end
+
+  srand(seed)
   star_gen_init()
 end
 
