@@ -115,7 +115,7 @@ stars={}
 ----- stargen definition -----
 do
   local max_candidates = 10
-  local stars_limit = 2000 --max number of stars based on sky size, mindist etc, needed since storage can only hold star indices so big
+  local stars_limit = 128 --max number of stars, estimated by sky_size^2/((mindist - pertubation/2)^2 * pi). Important for knowing bit number for storing star indices
 
   local twinkling_base = 150
   local twinkling_rnd = 120
@@ -132,11 +132,12 @@ do
     if(star.base_col == 4) star.base_col = 1
     set_twinkle(star)
     star.timer -= flr(rnd(twinkling_base))
+    star.idx = #stars + 1 --assumes it will be added to the end of stars
     return star
   end
 
   function star_gen_init()
-      --do rnd things in init so we can call seed before if necessary
+      --do rnd things in init so we can call seed before this in _init
     mindist = 19 + rnd(2)
     pertubation = 8 + rnd(4) --chosen as smallest possible mindist - 1 / sqrt(2), so that no 2 stars can be next to each other even if mindist is minimal, and they get maximum pertubation
     active = {}
@@ -196,13 +197,242 @@ do
     end
 
     if #active == 0 or #stars == stars_limit then
+      data_load_constellations()
       state = 1
     end
   end
 end
----- star_gen end -----
+---- star_gen end ----
 
----- star select start -----
+abc = 'abcdefghijklmnopqrstuvwxyz123456789 ' --character set for constellation naming, needed by both data and star select section
+
+---- data api start ----
+do
+  local head = 0
+
+  function set_head(new_head)
+    head = new_head
+  end
+
+  function write_bytes(data)
+    if #data == 0 then do return end end
+
+    for i=1,#data do
+      data[i] = shr(data[i], 16) --move to the lowest 8 bits so after this we only have to do left shifts
+    end
+
+    local to_write = #data
+    if head % 4 ~= 0 then --handle partial byte beginning
+      local partial_num = dget(flr(head / 4))
+
+      local align_offset = head - flr(head/4) * 4 --offset from the last 4byte alignment
+
+      local add_count = min(4-align_offset, to_write) --we'll fill up the partial byte, but we have to stop if there's not enough data to do that
+      for i=1,add_count do
+        partial_num = bor(partial_num, shl(data[i], (4 - align_offset - i) * 8))
+      end
+      dset(flr(head/4), partial_num)
+      to_write -= add_count
+      head += add_count
+    end
+
+    if to_write >= 4 then --there's at least one full 4byte number left
+      local block_count = flr(to_write / 4) --number of 4byte blocks we have
+      local base_idx = (#data - to_write)
+      for i=1,block_count do
+        local num = shl(data[base_idx + 1], 24)
+        num = bor(num, shl(data[base_idx + 2], 16))
+        num = bor(num, shl(data[base_idx + 3], 8))
+        num = bor(num, shl(data[base_idx + 4]))
+        dset(flr(head / 4), num)
+        head += 4
+        base_idx += 4
+        to_write -= 4
+      end
+    end
+
+    if to_write > 0 then --handle remaining non-aligning bytes
+      local base_idx = #data - to_write
+      local partial_num = 0
+      for i=1,to_write do
+        local data_byte = data[base_idx + i]
+        partial_num = bor(partial_num, shl(data_byte, (4 - i) * 8))
+      end
+      dset(flr(head / 4), partial_num)
+      head += to_write
+    end
+  end
+
+  function write_num(num)
+    local bytes = {}
+    bytes[1] = shr(band(num, 0xff00), 8)
+    bytes[2] = band(num, 0x00ff)
+    bytes[3] = shl(band(num, 0x0.ff00), 8)
+    bytes[4] = shl(band(num, 0x0.00ff), 16)
+    write_bytes(bytes)
+  end
+
+  --[[
+  function read_num(idx)
+    if idx % 4 == 0 then return dget(flr(idx / 4))
+    else
+      local first_num = dget(flr(idx / 4))
+      local second_num = dget(flr(idx / 4) + 1)
+
+      local align_offset = idx - flr(idx / 4) * 4
+
+      second_num = shr(second_num, (4 - align_offset) * 8)
+
+      local mask = shl(0x0.0001, align_offset * 8) - 0x0.0001
+      second_num = band(second_num, mask)
+      
+      first_num = shl(first_num, align_offset * 8)
+      mask = bnot(mask)
+      first_num = band(first_num, mask)
+
+      return bor(first_num, second_num)
+    end
+  end
+  --]]
+
+  function read_num(idx)
+    if idx % 4 == 0 then return dget(flr(idx/4)) end
+
+    local bytes = read_bytes(idx, 4)
+
+    local num = shl(bytes[1], 8)
+    num = bor(num, bytes[2])
+    num = bor(num, shr(bytes[3], 8))
+    num = bor(num, shr(bytes[4], 16))
+
+    return num
+  end
+
+  function read_bytes(idx, len)
+    local bytes = {}
+
+    local num = dget(flr(idx / 4)) --load first num in case idx is not on a boundry
+    for i=idx, idx+len - 1 do
+      if i % 4 == 0 then num = dget(i/4) end --load new number when we cross a 4byte boundry
+
+      local align_offset = i - flr(i/4) * 4
+
+      local byte = num
+
+      if align_offset == 0 then byte = shr(byte, 8)
+      elseif align_offset == 2 then byte = shl(byte, 8)
+      elseif align_offset == 3 then byte = shl(byte, 16) end
+
+      byte = band(byte, 0xff)
+
+      add(bytes, byte)
+    end
+    return bytes
+  end
+end
+---- data api end ----
+
+---- serialization start ----
+do
+  local name_reverse = {}
+  function data_init()
+    cartdata('keymaster_stargazer')
+
+    for i=1,#abc do
+      name_reverse[sub(abc,i,i)] = i
+    end
+  end
+
+  function data_init_seed()
+    local seed = read_num(0) --on first start this is 0
+    seed = band(seed, 0xffff.0000) --seed is in the first 16 bits (non-fractional bits)
+
+    if seed == 0 then
+      seed = rnd(32767.99)
+      seed = seed * sgn(rnd(1) - 0.5)
+      seed = flr(seed)
+
+      write_num(seed) --no need to respect lower bits since if there's no seed, we assume there's no saved data
+    end
+
+    srand(seed)
+  end
+
+  function data_load_constellations()
+    local new_head = 4 --start behind seed
+
+    local const_descr = read_num(new_head)
+
+    while const_descr ~= 0 do
+      local const = {}
+      local star_count = band(shr(const_descr, 8), 0xff)
+      local letters = {}
+      letters[1] = band(shr(const_descr, 2), 0x3f)
+      letters[2] = band(shl(const_descr, 4), 0x3f)
+      letters[3] = band(shl(const_descr, 10), 0x3f)
+      letters[4] = band(shl(const_descr, 16), 0x3f)
+
+      const.name = ''
+      for letter in all(letters) do const.name = const.name .. sub(abc, letter, letter) end
+
+      new_head += 4
+
+      local star_bytes = read_bytes(new_head, star_count)
+
+      for byte in all(star_bytes) do
+        
+        local star_idx = band(byte, 0x7f)
+        local star = stars[star_idx]
+        add(const, star)
+        if band(byte, 0x80) ~= 0 then add(const, star) end
+      end
+
+      set_mid_point(const)
+      add_constellation(const)
+
+      new_head += star_count
+
+      const_descr = read_num(new_head)
+    end
+
+    set_head(new_head)
+  end
+
+  function data_write_constellation(const)
+    local data = {}
+
+    -- do stars first since we need star count in our description
+    local i = 1
+    while i<=#const do
+      local byte = const[i].idx
+      if i ~= #const then
+        if const[i] == const[i+1] then
+          byte = bor(byte, 0x80) --bit 7 indicates if this star repeats
+          i += 1 --skip the next star
+        end
+      end
+      add(data, byte)
+      i += 1
+    end
+
+    local name_nums = {}
+    for i=1,4 do --since data packing doesn't work for other count, hardcoding name len of 4
+      add(name_nums, name_reverse[sub(const.name, i, i)])
+    end
+
+    local descr = shl(#data,8)
+    descr = bor(descr, shl(name_nums[1], 2))
+    descr = bor(descr, shr(name_nums[2], 4))
+    descr = bor(descr, shr(name_nums[3], 10))
+    descr = bor(descr, shr(name_nums[4], 16))
+
+    write_num(descr)
+    write_bytes(data)
+  end
+end
+---- serialization end ----
+
+---- star select start ----
 do
   local cur_constellation = {}
   local hovered_star = nil
@@ -210,7 +440,7 @@ do
   local commit_count = -1
   local hovered_connection = nil
 
-  local function set_mid_point(const)
+  function set_mid_point(const)
     local mid_point = {x=0, y=0}
 
     for star in all(const) do
@@ -229,7 +459,8 @@ do
     
     hovered_star = nil
 
-    for star in all(stars) do
+    for i=1,#stars do
+      local star = stars[i]
       star.timer -= 1
       if dist_check(csr.x + cam.x, csr.y + cam.y, star.x, star.y, 3) then
         hovered_star = star
@@ -335,7 +566,10 @@ do
 
   local letters = {1,1,1,1}
   local highlighted = 1
-  local abc = 'abcdefghijklmnopqrstuvwxyz123456789 '
+
+  function add_constellation(const)
+    add(constellations, const)
+  end
 
   function star_select_update_naming()
     if btnp(4) then
@@ -351,7 +585,8 @@ do
         cur_constellation.name = cur_constellation.name .. sub(abc, letters[i], letters[i])
         letters[i] = 1
       end
-      add(constellations, cur_constellation)
+      add_constellation(cur_constellation)
+      data_write_constellation(cur_constellation)
       cur_constellation = {}
       highlighted = 1
       state = 1
@@ -409,22 +644,8 @@ cam={
 }
 
 function _init()
-  cartdata('keymaster_stargazer')
-  local first_byte = dget(0) --on first start this is 0
-  local seed = band(first_byte, 0xffff.0000) --seed is in the first 16 bits (non-fractional bits)
-
-  if seed == 0 then
-    seed = rnd(32767.99)
-    seed = seed * sgn(rnd(1) - 0.5)
-    seed = flr(seed)
-
-    local lower_bits = band(first_byte, 0x0000.ffff)
-    local write_back = bor(seed, lower_bits)
-
-    dset(0, write_back)
-  end
-
-  srand(seed)
+  data_init()
+  data_init_seed()
   star_gen_init()
 end
 
@@ -472,12 +693,12 @@ function _draw()
     else pset(star.x - cam.x, star.y - cam.y, star.col) end
   end
 
-  spr(csr_gfx, csr.x-3, csr.y-3)
-
   camera(cam.x, cam.y)
   if state == 1 or state == 2 then star_select_draw_names() end
 
   camera()
+  spr(csr_gfx, csr.x-3, csr.y-3)
+
   if state == 0 then print('filling the sky...', 29, 10, 7)
   elseif state == 1 then star_select_draw_commit() end
 
