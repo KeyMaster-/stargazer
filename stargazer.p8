@@ -112,7 +112,7 @@ end
 
 stars={}
 
------ stargen definition -----
+---- stargen definition ----
 do
   local max_candidates = 10
   local stars_limit = 128 --max number of stars, estimated by sky_size^2/((mindist - pertubation/2)^2 * pi). Important for knowing bit number for storing star indices
@@ -629,7 +629,63 @@ do
     end
   end
 end
------ star select end -----
+---- star select end ----
+
+---- restart commit start ----
+do
+  local restart_counter = 0
+  local restart_choice = false
+  local buttons_released = false
+
+  function restart_update()
+    if not restart_choice then
+      if csr.y + cam.y == 255 and btn(3) and btn(4) then
+        restart_counter += 1
+        if restart_counter == 42 then restart_choice = true end
+      else
+        restart_counter = 0
+      end
+    end
+      
+    if restart_choice then
+      if not btn(4) and not btn(5) then
+        buttons_released = true
+      end
+
+      if buttons_released then
+        if btnp(5) then
+          
+            --clear all saved data, including seed
+          set_head(0)
+          for i=0,63 do
+            write_num(0)
+          end
+
+          run()
+
+          restart_choice = false
+          buttons_released = false
+        elseif btnp(4) then
+          restart_choice = false
+          buttons_released = false
+        end
+      end
+    end
+  end
+
+  function restart_draw()
+    if restart_counter >= 10 then
+      clip(0,127 - (restart_counter - 10) * 4, 127, (restart_counter - 10) * 4)
+
+      rectfill(0, 127 - (restart_counter - 10) * 4,127,127,1)
+      print('a new sky?', 64 - (10*4 - 1) / 2, 64 - 4, 12)
+      print('[0] no | [x] yes', 64 - (16*4 - 1) / 2, 64 + 3, 13)
+
+      clip()
+    end
+  end
+end
+---- restart commit end ----
 
 csr={
   x=64,
@@ -670,6 +726,8 @@ function _update()
     cam.y = mid(cam.y, 0, sky_size - 128)
 
     star_select_update()
+
+    restart_update()
   elseif state == 2 then
     star_select_update_naming()
   end
@@ -703,6 +761,8 @@ function _draw()
   elseif state == 1 then star_select_draw_commit() end
 
   if state == 2 then star_select_draw_name_select() end
+
+  if state == 1 then restart_draw() end
 end
 __gfx__
 00000000007070000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
