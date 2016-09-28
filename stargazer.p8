@@ -110,7 +110,7 @@ end
 
 stars={}
 
----- stargen definition ----
+---- star_gen start ----
 do
   local max_candidates = 10
   local stars_limit = 128 --max number of stars, estimated by sky_size^2/((mindist - pertubation/2)^2 * pi). Important for knowing bit number for storing star indices
@@ -196,6 +196,7 @@ do
 
     if #active == 0 or #stars == stars_limit then
       data_load_constellations()
+      star_select_update_max_stars()
       state = 1
     end
   end
@@ -346,7 +347,12 @@ do
       seed = seed * sgn(rnd(1) - 0.5)
       seed = flr(seed)
 
-      write_num(seed) --no need to respect lower bits since if there's no seed, we assume there's no saved data
+        -- split up the seed into bytes so we can write only the first 2 bytes
+      local bytes = {}
+      add(bytes, band(shr(seed, 8), 0xff)) -- higher bits
+      add(bytes, band(seed, 0xff)) --lower bits
+
+      write_bytes(bytes)
     end
 
     srand(seed)
@@ -448,6 +454,11 @@ do
   local constellations = {}
   local commit_count = -1
   local hovered_connection = nil
+  local max_stars_remaining = 256 -- will be updated after 
+
+  function star_select_update_max_stars()
+    max_stars_remaining = 256 - data_head - 4
+  end
 
   function set_mid_point(const)
     local mid_point = {x=0, y=0}
@@ -476,9 +487,11 @@ do
         csr_gfx = 1
         if btnp(5) then
           if star ~= last_star then
-            if last_star ~= nil then add(cur_constellation, star) end --Complete the last to our previous last star if we aren't starting a new sequence
-            add(cur_constellation, star) --Start the next line segment
-            last_star = star
+            if max_stars_remaining - data_constellation_stars_cost(cur_constellation) > 0 then
+              if last_star ~= nil then add(cur_constellation, star) end --Complete the last to our previous last star if we aren't starting a new sequence
+              add(cur_constellation, star) --Start the next line segment
+              last_star = star
+            end
           end
         end
         break
@@ -557,22 +570,25 @@ do
       draw_constellation(const, 5, 4, 2)
     end
 
-    draw_constellation(cur_constellation, 6)
+    draw_constellation(cur_constellation, 5)
 
     if hovered_connection ~= nil then line(hovered_connection[1].x, hovered_connection[1].y, hovered_connection[2].x, hovered_connection[2].y, 9) end
 
     if last_star != nil then 
-      if hovered_star ~= nil then line(last_star.x, last_star.y, hovered_star.x, hovered_star.y, 6)
-      else line(last_star.x, last_star.y, csr.x + cam.x, csr.y + cam.y, 6) end
+      if hovered_star ~= nil then line(last_star.x, last_star.y, hovered_star.x, hovered_star.y, 5)
+      else line(last_star.x, last_star.y, csr.x + cam.x, csr.y + cam.y, 5) end
     end
   end
 
   function star_select_draw_space_indicator()
     if #cur_constellation ~= 0 then
-      local max_stars_remaining = 256 - data_head - 4
       local stars_cost = data_constellation_stars_cost(cur_constellation)
       local disp_string = stars_cost .. '/' .. max_stars_remaining
-      print(disp_string, 64 - (#disp_string * 4 - 1) / 2, 120, 13)
+
+      local text_col = 13
+      if max_stars_remaining - stars_cost == 0 then text_col = 8 end
+
+      print(disp_string, 64 - (#disp_string * 4 - 1) / 2, 120, text_col)
     end
   end
 
@@ -605,6 +621,7 @@ do
       end
       add_constellation(cur_constellation)
       data_write_constellation(cur_constellation)
+      star_select_update_max_stars()
       cur_constellation = {}
       highlighted = 1
       state = 1
@@ -690,7 +707,7 @@ do
 
   function restart_draw()
     if restart_counter >= 10 then
-      clip(0,127 - (restart_counter - 10) * 4, 127, (restart_counter - 10) * 4)
+      clip(0,128 - (restart_counter - 10) * 4, 128, (restart_counter - 10) * 4)
 
       rectfill(0, 127 - (restart_counter - 10) * 4,127,127,1)
       print('a new sky?', 64 - (10*4 - 1) / 2, 64 - 4, 12)
