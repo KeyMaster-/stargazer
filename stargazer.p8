@@ -98,6 +98,19 @@ function circ_custom(x0, y0, r, col, theta, delta)
   end
 end
 
+  -- deletes the elements in t at idx_start and idx_start + 1, and shifts all following elements down to fill the hole
+function del_idx_pair(t, idx_start)
+  local i = idx_start + 2
+  while i <= #t do
+    t[i - 2] = t[i]
+    i += 1
+  end
+
+    -- remove the last 2 elements
+  t[#t] = nil
+  t[#t] = nil
+end
+
   --checks if x1,y1 is within dist distance from x2,y2
 function dist_check(x1,y1,x2,y2,dist)
     --if outisde bounding box, not in distance
@@ -521,7 +534,10 @@ do
           if along_line >= 0 and along_line <= 1 then
             local away_sqr = csr_rel.x * csr_rel.x + csr_rel.y * csr_rel.y - along_line^2 * (dir.x * dir.x + dir.y * dir.y)
             if away_sqr < 3^2 then
-              hovered_connection = {l_start, l_end}
+              hovered_connection = {
+                start_idx = (i*2 - 1),
+                stars = {l_start, l_end}
+              }
               break
             end
           end
@@ -529,8 +545,7 @@ do
 
         if hovered_connection ~= nil then
           if btnp(5) then
-            del(cur_constellation, hovered_connection[1])
-            del(cur_constellation, hovered_connection[2])
+            del_idx_pair(cur_constellation, hovered_connection.start_idx)
             commit_count = -1 --delete should not start commit, button will have to be re-pressed to do so
           end
         else
@@ -572,7 +587,7 @@ do
 
     draw_constellation(cur_constellation, 5)
 
-    if hovered_connection ~= nil then line(hovered_connection[1].x, hovered_connection[1].y, hovered_connection[2].x, hovered_connection[2].y, 9) end
+    if hovered_connection ~= nil then line(hovered_connection.stars[1].x, hovered_connection.stars[1].y, hovered_connection.stars[2].x, hovered_connection.stars[2].y, 9) end
 
     if last_star != nil then 
       if hovered_star ~= nil then line(last_star.x, last_star.y, hovered_star.x, hovered_star.y, 5)
