@@ -1,8 +1,6 @@
 pico-8 cartridge // http://www.pico-8.com
 version 8
 __lua__
---todo: load seed from savefile if there is one saved
--- srand(512)
 
 sky_size = 256
 
@@ -208,11 +206,7 @@ abc = 'abcdefghijklmnopqrstuvwxyz123456789 ' --character set for constellation n
 
 ---- data api start ----
 do
-  local head = 0
-
-  function set_head(new_head)
-    head = new_head
-  end
+  data_head = 0
 
   function write_bytes(data)
     if #data == 0 then do return end end
@@ -222,18 +216,18 @@ do
     end
 
     local to_write = #data
-    if head % 4 ~= 0 then --handle partial byte beginning
-      local partial_num = dget(flr(head / 4))
+    if data_head % 4 ~= 0 then --handle partial byte beginning
+      local partial_num = dget(flr(data_head / 4))
 
-      local align_offset = head - flr(head/4) * 4 --offset from the last 4byte alignment
+      local align_offset = data_head - flr(data_head/4) * 4 --offset from the last 4byte alignment
 
       local add_count = min(4-align_offset, to_write) --we'll fill up the partial byte, but we have to stop if there's not enough data to do that
       for i=1,add_count do
         partial_num = bor(partial_num, shl(data[i], (4 - align_offset - i) * 8))
       end
-      dset(flr(head/4), partial_num)
+      dset(flr(data_head/4), partial_num)
       to_write -= add_count
-      head += add_count
+      data_head += add_count
     end
 
     if to_write >= 4 then --there's at least one full 4byte number left
@@ -244,8 +238,8 @@ do
         num = bor(num, shl(data[base_idx + 2], 16))
         num = bor(num, shl(data[base_idx + 3], 8))
         num = bor(num, shl(data[base_idx + 4]))
-        dset(flr(head / 4), num)
-        head += 4
+        dset(flr(data_head / 4), num)
+        data_head += 4
         base_idx += 4
         to_write -= 4
       end
@@ -258,8 +252,8 @@ do
         local data_byte = data[base_idx + i]
         partial_num = bor(partial_num, shl(data_byte, (4 - i) * 8))
       end
-      dset(flr(head / 4), partial_num)
-      head += to_write
+      dset(flr(data_head / 4), partial_num)
+      data_head += to_write
     end
   end
 
@@ -395,7 +389,7 @@ do
       const_descr = read_num(new_head)
     end
 
-    set_head(new_head)
+    data_head = new_head
   end
 
   function data_write_constellation(const)
@@ -428,6 +422,21 @@ do
 
     write_num(descr)
     write_bytes(data)
+  end
+
+    --Gives the cost to serialize the stars of a given constellation - ignores the 4 bytes for the description!
+  function data_constellation_stars_cost(const)
+    local cost = 0
+    local i = 1
+    while i <= #const do
+      if i ~= #const then
+        if const[i] == const[i+1] then i += 1 end
+      end
+      cost += 1
+      i += 1
+    end
+
+    return cost
   end
 end
 ---- serialization end ----
@@ -558,6 +567,15 @@ do
     end
   end
 
+  function star_select_draw_space_indicator()
+    if #cur_constellation ~= 0 then
+      local max_stars_remaining = 256 - data_head - 4
+      local stars_cost = data_constellation_stars_cost(cur_constellation)
+      local disp_string = stars_cost .. '/' .. max_stars_remaining
+      print(disp_string, 64 - (#disp_string * 4 - 1) / 2, 120, 13)
+    end
+  end
+
   function star_select_draw_commit()
     if commit_count > 0 then
       circ_custom(csr.x, csr.y, 8, 3, 0, commit_count/20)
@@ -639,7 +657,7 @@ do
 
   function restart_update()
     if not restart_choice then
-      if csr.y + cam.y == 255 and btn(3) and btn(4) then
+      if csr.y + cam.y == 255 and btn(3) and btn(4) and not (btn(0) or btn(1) or btn(2)) then
         restart_counter += 1
         if restart_counter == 42 then restart_choice = true end
       else
@@ -656,15 +674,12 @@ do
         if btnp(5) then
           
             --clear all saved data, including seed
-          set_head(0)
+          data_head = 0
           for i=0,63 do
             write_num(0)
           end
 
           run()
-
-          restart_choice = false
-          buttons_released = false
         elseif btnp(4) then
           restart_choice = false
           buttons_released = false
@@ -758,7 +773,10 @@ function _draw()
   spr(csr_gfx, csr.x-3, csr.y-3)
 
   if state == 0 then print('filling the sky...', 29, 10, 7)
-  elseif state == 1 then star_select_draw_commit() end
+  elseif state == 1 then 
+    star_select_draw_space_indicator()
+    star_select_draw_commit()
+  end
 
   if state == 2 then star_select_draw_name_select() end
 
