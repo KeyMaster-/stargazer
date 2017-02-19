@@ -3,6 +3,16 @@ version 8
 __lua__
 --ê         stargazer         ê
 --ê                           ê
+-- STARGAZER --
+-- Relax and draw constellations on your own personal sky.
+
+-- INSTRUCTIONS --
+-- Move with arrow keys. Hold C to move faster.
+-- Select stars with X. Connect them to form constellations.
+-- Hold X when not connecting stars to finalise a constellation. Select a name and confirm with X, or cancel with C.
+-- Delete connections with X while hovering the line.
+-- To clear your constellations and generate a new sky, hold Down and C at the bottom of the sky.
+
 sky_size = 256
 
 state = 0 -- 0: stargen, 1: star select, 2: star name
